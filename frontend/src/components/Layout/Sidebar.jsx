@@ -90,17 +90,6 @@ const Sidebar = ({ activeTab, onTabChange }) => {
         </ul>
       </nav>
 
-      {/* Footer */}
-      <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200 dark:border-gray-700">
-        <div className="text-center">
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {t('govt_title')}
-          </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {t('dept_title')}
-          </p>
-        </div>
-      </div>
     </div>
   );
 };

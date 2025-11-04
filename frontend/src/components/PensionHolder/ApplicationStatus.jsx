@@ -29,7 +29,11 @@ const ApplicationStatus = () => {
   const [showModal, setShowModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const userApplications = applications.filter(app => app.userId === user.id);
+  const userApplications = applications.filter(app => {
+    // Handle both populated object and string ID cases
+    const appUserId = app.userId?._id?.toString() || app.userId?.toString() || app.userId;
+    return appUserId === user.id;
+  });
 
   useEffect(() => {
     fetchApplications();

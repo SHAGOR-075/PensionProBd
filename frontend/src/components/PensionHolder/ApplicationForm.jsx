@@ -59,21 +59,56 @@ const ApplicationForm = () => {
   const handleChange = (e) => {
     const { name, value, type, files } = e.target;
     
+    let updatedData;
+    
     if (type === 'file') {
-      setFormData(prev => ({
-        ...prev,
+      updatedData = {
+        ...formData,
         [name]: files[0]
-      }));
+      };
+      setFormData(updatedData);
     } else {
-      setFormData(prev => ({
-        ...prev,
+      updatedData = {
+        ...formData,
         [name]: value
-      }));
+      };
+      setFormData(updatedData);
     }
     
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }));
+    // Real-time date validation
+    if (type === 'date' && (name === 'dateOfBirth' || name === 'joiningDate' || name === 'retirementDate')) {
+      const newErrors = { ...errors };
+      
+      // Validate joining date is after birth date
+      if (updatedData.dateOfBirth && updatedData.joiningDate) {
+        const birthDate = new Date(updatedData.dateOfBirth);
+        const joining = new Date(updatedData.joiningDate);
+        if (joining <= birthDate) {
+          newErrors.joiningDate = 'Joining date must be after date of birth';
+        } else {
+          // Clear the error if validation passes
+          delete newErrors.joiningDate;
+        }
+      }
+      
+      // Validate retirement date is after joining date
+      if (updatedData.joiningDate && updatedData.retirementDate) {
+        const joining = new Date(updatedData.joiningDate);
+        const retirement = new Date(updatedData.retirementDate);
+        if (retirement <= joining) {
+          newErrors.retirementDate = 'Retirement date must be after joining date';
+        } else {
+          // Clear the error if validation passes
+          delete newErrors.retirementDate;
+        }
+      }
+      
+      setErrors(newErrors);
+    } else {
+      // Clear error when user starts typing (for non-date fields)
+      if (errors[name]) {
+        setErrors(prev => ({ ...prev, [name]: '' }));
+      }
     }
   };
 
@@ -95,7 +130,11 @@ const ApplicationForm = () => {
     if (!joiningDate || !retirementDate) return 0;
     const joining = new Date(joiningDate);
     const retirement = new Date(retirementDate);
-    const years = retirement.getFullYear() - joining.getFullYear();
+    let years = retirement.getFullYear() - joining.getFullYear();
+    const monthDiff = retirement.getMonth() - joining.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && retirement.getDate() < joining.getDate())) {
+      years--;
+    }
     return years;
   };
 
@@ -120,10 +159,29 @@ const ApplicationForm = () => {
         if (!formData.retirementDate) newErrors.retirementDate = 'Retirement date is required';
         if (!formData.lastSalary) newErrors.lastSalary = 'Last salary is required';
         
+        // Validate date order
+        if (formData.dateOfBirth && formData.joiningDate) {
+          const birthDate = new Date(formData.dateOfBirth);
+          const joining = new Date(formData.joiningDate);
+          if (joining <= birthDate) {
+            newErrors.joiningDate = 'Joining date must be after date of birth';
+          }
+        }
+        
+        if (formData.joiningDate && formData.retirementDate) {
+          const joining = new Date(formData.joiningDate);
+          const retirement = new Date(formData.retirementDate);
+          if (retirement <= joining) {
+            newErrors.retirementDate = 'Retirement date must be after joining date';
+          }
+        }
+        
         // Check job age requirement
-        const jobAge = calculateJobAge(formData.joiningDate, formData.retirementDate);
-        if (jobAge < 19) {
-          newErrors.jobAge = t('age_requirement');
+        if (formData.joiningDate && formData.retirementDate) {
+          const jobAge = calculateJobAge(formData.joiningDate, formData.retirementDate);
+          if (jobAge < 19) {
+            newErrors.jobAge = t('age_requirement');
+          }
         }
         break;
       

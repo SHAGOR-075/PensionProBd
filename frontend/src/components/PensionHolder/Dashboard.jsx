@@ -20,8 +20,16 @@ const Dashboard = () => {
   const { user } = useAuth();
   const { applications, complaints, dashboardStats } = useData();
 
-  const userApplications = applications.filter(app => app.userId === user.id);
-  const userComplaints = complaints.filter(complaint => complaint.userId === user.id);
+  const userApplications = applications.filter(app => {
+    // Handle both populated object and string ID cases
+    const appUserId = app.userId?._id?.toString() || app.userId?.toString() || app.userId;
+    return appUserId === user.id;
+  });
+  const userComplaints = complaints.filter(complaint => {
+    // Handle both populated object and string ID cases
+    const complaintUserId = complaint.userId?._id?.toString() || complaint.userId?.toString() || complaint.userId;
+    return complaintUserId === user.id;
+  });
 
   const getStatusColor = (status) => {
     switch (status) {

@@ -47,6 +47,7 @@ export const DataProvider = ({ children }) => {
 
   const fetchApplications = async () => {
     try {
+      setLoading(true);
       const response = await fetch(`${API_BASE_URL}/applications`, {
         headers: getAuthHeaders()
       });
@@ -54,9 +55,13 @@ export const DataProvider = ({ children }) => {
       if (response.ok) {
         const data = await response.json();
         setApplications(data);
+      } else {
+        console.error('Failed to fetch applications:', response.statusText);
       }
     } catch (error) {
       console.error('Failed to fetch applications:', error);
+    } finally {
+      setLoading(false);
     }
   };
 

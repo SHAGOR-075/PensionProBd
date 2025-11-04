@@ -79,21 +79,40 @@ router.post('/', authenticateToken, upload.fields([
       }
     }
 
-    // Calculate job age and validate
+    // Validate dates
+    const dateOfBirth = new Date(applicationData.dateOfBirth);
     const joiningDate = new Date(applicationData.joiningDate);
     const retirementDate = new Date(applicationData.retirementDate);
-    const jobAge = retirementDate.getFullYear() - joiningDate.getFullYear();
+    const today = new Date();
+
+    // Validate date order: dateOfBirth < joiningDate < retirementDate
+    if (joiningDate <= dateOfBirth) {
+      return res.status(400).json({ 
+        message: 'Joining date must be after date of birth' 
+      });
+    }
+
+    if (retirementDate <= joiningDate) {
+      return res.status(400).json({ 
+        message: 'Retirement date must be after joining date' 
+      });
+    }
+
+    // Calculate job age (accurate calculation considering months and days)
+    let jobAge = retirementDate.getFullYear() - joiningDate.getFullYear();
+    const monthDiff = retirementDate.getMonth() - joiningDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && retirementDate.getDate() < joiningDate.getDate())) {
+      jobAge--;
+    }
     
     if (jobAge < 19) {
       return res.status(400).json({ message: 'Minimum job age requirement is 19 years' });
     }
 
-    // Calculate age
-    const dateOfBirth = new Date(applicationData.dateOfBirth);
-    const today = new Date();
+    // Calculate age (accurate calculation considering months and days)
     let age = today.getFullYear() - dateOfBirth.getFullYear();
-    const monthDiff = today.getMonth() - dateOfBirth.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dateOfBirth.getDate())) {
+    const ageMonthDiff = today.getMonth() - dateOfBirth.getMonth();
+    if (ageMonthDiff < 0 || (ageMonthDiff === 0 && today.getDate() < dateOfBirth.getDate())) {
       age--;
     }
 

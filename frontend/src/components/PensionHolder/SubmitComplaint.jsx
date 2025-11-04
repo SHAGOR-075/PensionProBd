@@ -34,7 +34,11 @@ const SubmitComplaint = () => {
   });
   const [errors, setErrors] = useState({});
 
-  const userComplaints = complaints.filter(complaint => complaint.userId === user.id);
+  const userComplaints = complaints.filter(complaint => {
+    // Handle both populated object and string ID cases
+    const complaintUserId = complaint.userId?._id?.toString() || complaint.userId?.toString() || complaint.userId;
+    return complaintUserId === user.id;
+  });
 
   useEffect(() => {
     fetchComplaints();
