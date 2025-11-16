@@ -23,6 +23,7 @@ const Header = () => {
   const toggleLanguage = () => {
     const newLang = i18n.language === 'en' ? 'bn' : 'en';
     i18n.changeLanguage(newLang);
+    // Language preference is automatically saved via i18n.on('languageChanged') in i18n/index.js
   };
 
   const getRoleDisplay = (userType) => {

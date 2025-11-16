@@ -124,6 +124,7 @@ import './i18n';
 function AppContent() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [editingApplication, setEditingApplication] = useState(null);
 
   if (!user) {
     return (
@@ -148,9 +149,20 @@ function AppContent() {
         case 'dashboard':
           return <PensionHolderDashboard />;
         case 'application':
-          return <ApplicationForm />;
+          return <ApplicationForm 
+            editingApplication={editingApplication}
+            onComplete={() => {
+              setEditingApplication(null);
+              setActiveTab('status');
+            }}
+          />;
         case 'status':
-          return <ApplicationStatus />;
+          return <ApplicationStatus 
+            onEditApplication={(application) => {
+              setEditingApplication(application);
+              setActiveTab('application');
+            }}
+          />;
         case 'complaints':
           return <SubmitComplaint />;
         case 'documents':

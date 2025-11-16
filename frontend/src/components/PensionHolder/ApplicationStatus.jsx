@@ -18,10 +18,11 @@ import {
   MapPin,
   Phone,
   Mail,
-  Building
+  Building,
+  Edit
 } from 'lucide-react';
 
-const ApplicationStatus = () => {
+const ApplicationStatus = ({ onEditApplication }) => {
   const { t } = useTranslation();
   const { user } = useAuth();
   const { applications, fetchApplications, loading } = useData();
@@ -183,15 +184,27 @@ const ApplicationStatus = () => {
             <span>View Details</span>
           </button>
           
-          {application.status === 'approved' && (
-            <button
-              onClick={() => downloadCertificate(application)}
-              className="flex items-center space-x-2 px-4 py-2 bg-bd-green-600 text-white rounded-lg hover:bg-bd-green-700 transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              <span>Download Certificate</span>
-            </button>
-          )}
+          <div className="flex items-center space-x-2">
+            {application.status === 'rejected' && onEditApplication && (
+              <button
+                onClick={() => onEditApplication(application)}
+                className="flex items-center space-x-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+              >
+                <Edit className="w-4 h-4" />
+                <span>Edit & Resubmit</span>
+              </button>
+            )}
+            
+            {application.status === 'approved' && (
+              <button
+                onClick={() => downloadCertificate(application)}
+                className="flex items-center space-x-2 px-4 py-2 bg-bd-green-600 text-white rounded-lg hover:bg-bd-green-700 transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download Certificate</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

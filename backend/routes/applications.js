@@ -200,6 +200,152 @@ router.get('/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// Update/Resubmit Application
+router.put('/:id', authenticateToken, upload.fields([
+  { name: 'nidFile', maxCount: 1 },
+  { name: 'jobDocuments', maxCount: 1 }
+]), [
+  body('fullName').trim().isLength({ min: 2, max: 100 }).withMessage('Full name must be between 2 and 100 characters'),
+  body('fatherName').trim().isLength({ min: 2, max: 100 }).withMessage('Father name must be between 2 and 100 characters'),
+  body('motherName').trim().isLength({ min: 2, max: 100 }).withMessage('Mother name must be between 2 and 100 characters'),
+  body('dateOfBirth').isISO8601().withMessage('Valid date of birth is required'),
+  body('nidNumber').trim().isLength({ min: 10, max: 20 }).withMessage('Valid NID number is required'),
+  body('phoneNumber').trim().isLength({ min: 10 }).withMessage('Valid phone number is required'),
+  body('address').trim().isLength({ min: 5 }).withMessage('Address is required'),
+  body('lastDesignation').trim().isLength({ min: 2 }).withMessage('Last designation is required'),
+  body('department').trim().isLength({ min: 2 }).withMessage('Department is required'),
+  body('joiningDate').isISO8601().withMessage('Valid joining date is required'),
+  body('retirementDate').isISO8601().withMessage('Valid retirement date is required'),
+  body('lastSalary').isNumeric().withMessage('Valid last salary is required'),
+  body('bankName').trim().isLength({ min: 2 }).withMessage('Bank name is required'),
+  body('accountNumber').trim().isLength({ min: 5 }).withMessage('Account number is required'),
+  body('branchName').trim().isLength({ min: 2 }).withMessage('Branch name is required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        message: 'Validation failed', 
+        errors: errors.array() 
+      });
+    }
+
+    const { id } = req.params;
+    const applicationData = req.body;
+
+    const application = await Application.findById(id);
+    if (!application) {
+      return res.status(404).json({ message: 'Application not found' });
+    }
+
+    // Check permissions - only pension holder who owns the application and it's rejected
+    if (req.user.userType !== 'pension_holder') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    if (application.userId.toString() !== req.user.userId) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    if (application.status !== 'rejected') {
+      return res.status(400).json({ message: 'Can only edit rejected applications' });
+    }
+
+    // Add file paths if new files were uploaded
+    if (req.files) {
+      if (req.files.nidFile) {
+        applicationData.nidFile = req.files.nidFile[0].path;
+      }
+      if (req.files.jobDocuments) {
+        applicationData.jobDocuments = req.files.jobDocuments[0].path;
+      }
+    } else {
+      // Keep existing file paths if no new files uploaded
+      applicationData.nidFile = application.nidFile;
+      applicationData.jobDocuments = application.jobDocuments;
+    }
+
+    // Validate dates
+    const dateOfBirth = new Date(applicationData.dateOfBirth);
+    const joiningDate = new Date(applicationData.joiningDate);
+    const retirementDate = new Date(applicationData.retirementDate);
+    const today = new Date();
+
+    // Validate date order
+    if (joiningDate <= dateOfBirth) {
+      return res.status(400).json({ 
+        message: 'Joining date must be after date of birth' 
+      });
+    }
+
+    if (retirementDate <= joiningDate) {
+      return res.status(400).json({ 
+        message: 'Retirement date must be after joining date' 
+      });
+    }
+
+    // Calculate job age
+    let jobAge = retirementDate.getFullYear() - joiningDate.getFullYear();
+    const monthDiff = retirementDate.getMonth() - joiningDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && retirementDate.getDate() < joiningDate.getDate())) {
+      jobAge--;
+    }
+    
+    if (jobAge < 19) {
+      return res.status(400).json({ message: 'Minimum job age requirement is 19 years' });
+    }
+
+    // Calculate age
+    let age = today.getFullYear() - dateOfBirth.getFullYear();
+    const ageMonthDiff = today.getMonth() - dateOfBirth.getMonth();
+    if (ageMonthDiff < 0 || (ageMonthDiff === 0 && today.getDate() < dateOfBirth.getDate())) {
+      age--;
+    }
+
+    // Calculate pension amount
+    const pensionAmount = Math.floor(parseFloat(applicationData.lastSalary) * 0.5);
+
+    // Update application fields
+    Object.assign(application, {
+      ...applicationData,
+      jobAge,
+      age,
+      pensionAmount,
+      status: 'pending',
+      rejectedAt: null,
+      submittedAt: new Date()
+    });
+
+    // Add history entry for resubmission
+    application.history.push({
+      status: 'pending',
+      timestamp: new Date(),
+      message: 'Application edited and resubmitted after rejection',
+      updatedBy: req.user.userId
+    });
+
+    await application.save();
+
+    // Create notification for user
+    const notification = new Notification({
+      userId: req.user.userId,
+      type: 'application_submitted',
+      title: 'Application Resubmitted',
+      message: `Your pension application #${application.applicationNumber} has been resubmitted successfully`,
+      applicationId: application._id
+    });
+    await notification.save();
+
+    res.json({
+      message: 'Application updated and resubmitted successfully',
+      application
+    });
+  } catch (error) {
+    console.error('Update application error:', error);
+    res.status(500).json({ message: 'Server error updating application' });
+  }
+});
+
 // Update Application Status
 router.put('/:id/status', authenticateToken, authorizeRoles('assistant_accountant', 'head_office'), [
   body('status').isIn(['pending', 'forwarded', 'approved', 'rejected']).withMessage('Invalid status'),

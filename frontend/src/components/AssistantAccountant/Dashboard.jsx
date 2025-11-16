@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
@@ -13,20 +13,34 @@ import {
   AlertTriangle,
   User,
   Calendar,
-  DollarSign
+  DollarSign,
+  Flag
 } from 'lucide-react';
 
 const AssistantAccountantDashboard = ({ activeTab }) => {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { applications, updateApplicationStatus, dashboardStats } = useData();
+  const { applications, updateApplicationStatus, dashboardStats, complaints, fetchComplaints } = useData();
   const [selectedApplication, setSelectedApplication] = useState(null);
+  const [selectedComplaint, setSelectedComplaint] = useState(null);
   const [feedback, setFeedback] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [showComplaintModal, setShowComplaintModal] = useState(false);
   const [actionType, setActionType] = useState('');
+
+  // Fetch complaints on mount
+  useEffect(() => {
+    fetchComplaints();
+  }, [fetchComplaints]);
 
   const pendingApplications = applications.filter(app => app.status === 'pending');
   const reviewedApplications = applications.filter(app => app.status !== 'pending');
+  
+  // Filter complaints against this assistant accountant that resulted in red flags
+  const redFlagComplaints = complaints.filter(complaint => {
+    const complaintOfficerId = complaint.officerId?._id?.toString() || complaint.officerId?.toString() || complaint.officerId;
+    return complaintOfficerId === user.id && complaint.redFlagIssued === true;
+  });
 
   const handleAction = (application, action) => {
     setSelectedApplication(application);
@@ -137,22 +151,173 @@ const AssistantAccountantDashboard = ({ activeTab }) => {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
+        <div className={`bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border-2 ${
+          (user.redFlags || 0) >= 3 
+            ? 'border-red-500 dark:border-red-600' 
+            : (user.redFlags || 0) >= 2 
+            ? 'border-orange-500 dark:border-orange-600'
+            : (user.redFlags || 0) > 0
+            ? 'border-yellow-500 dark:border-yellow-600'
+            : 'border-gray-200 dark:border-gray-700'
+        }`}>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                Rejected
+                Red Flags
               </p>
-              <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                {dashboardStats.rejectedApplications || applications.filter(app => app.status === 'rejected').length}
+              <p className={`text-3xl font-bold ${
+                (user.redFlags || 0) >= 3 
+                  ? 'text-red-600' 
+                  : (user.redFlags || 0) >= 2 
+                  ? 'text-orange-600'
+                  : (user.redFlags || 0) > 0
+                  ? 'text-yellow-600'
+                  : 'text-gray-900 dark:text-white'
+              }`}>
+                {user.redFlags || 0}/3
               </p>
             </div>
-            <div className="p-3 rounded-full bg-red-100 dark:bg-red-900/20">
-              <XCircle className="w-6 h-6 text-red-600" />
+            <div className={`p-3 rounded-full ${
+              (user.redFlags || 0) >= 3 
+                ? 'bg-red-100 dark:bg-red-900/20' 
+                : (user.redFlags || 0) >= 2 
+                ? 'bg-orange-100 dark:bg-orange-900/20'
+                : (user.redFlags || 0) > 0
+                ? 'bg-yellow-100 dark:bg-yellow-900/20'
+                : 'bg-gray-100 dark:bg-gray-900/20'
+            }`}>
+              <Flag className={`w-6 h-6 ${
+                (user.redFlags || 0) >= 3 
+                  ? 'text-red-600' 
+                  : (user.redFlags || 0) >= 2 
+                  ? 'text-orange-600'
+                  : (user.redFlags || 0) > 0
+                  ? 'text-yellow-600'
+                  : 'text-gray-600'
+              }`} />
             </div>
           </div>
         </div>
       </div>
+
+      {/* Red Flags Alert */}
+      {user.redFlags > 0 && (
+        <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border-2 ${
+          user.redFlags >= 3 
+            ? 'border-red-500 dark:border-red-600' 
+            : user.redFlags >= 2 
+            ? 'border-orange-500 dark:border-orange-600'
+            : 'border-yellow-500 dark:border-yellow-600'
+        }`}>
+          <div className="p-6">
+            <div className="flex items-center space-x-4">
+              <div className={`p-3 rounded-full ${
+                user.redFlags >= 3 
+                  ? 'bg-red-100 dark:bg-red-900/20' 
+                  : user.redFlags >= 2 
+                  ? 'bg-orange-100 dark:bg-orange-900/20'
+                  : 'bg-yellow-100 dark:bg-yellow-900/20'
+              }`}>
+                <Flag className={`w-6 h-6 ${
+                  user.redFlags >= 3 
+                    ? 'text-red-600' 
+                    : user.redFlags >= 2 
+                    ? 'text-orange-600'
+                    : 'text-yellow-600'
+                }`} />
+              </div>
+              <div className="flex-1">
+                <h3 className={`text-lg font-semibold ${
+                  user.redFlags >= 3 
+                    ? 'text-red-900 dark:text-red-100' 
+                    : user.redFlags >= 2 
+                    ? 'text-orange-900 dark:text-orange-100'
+                    : 'text-yellow-900 dark:text-yellow-100'
+                }`}>
+                  {user.redFlags >= 3 
+                    ? 'Account Disabled - 3 Red Flags Received' 
+                    : `Red Flag Warning - ${user.redFlags}/3 Red Flags`}
+                </h3>
+                <p className={`text-sm mt-1 ${
+                  user.redFlags >= 3 
+                    ? 'text-red-700 dark:text-red-300' 
+                    : user.redFlags >= 2 
+                    ? 'text-orange-700 dark:text-orange-300'
+                    : 'text-yellow-700 dark:text-yellow-300'
+                }`}>
+                  {user.redFlags >= 3 
+                    ? 'Your account has been disabled due to receiving 3 red flag warnings. Please contact the Head Office for assistance.'
+                    : user.redFlags >= 2
+                    ? `You have received ${user.redFlags} red flag warnings. One more red flag will result in account deactivation.`
+                    : `You have received ${user.redFlags} red flag warning. Please review the complaints below and improve your service quality.`}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Red Flags Section */}
+      {redFlagComplaints.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center space-x-2">
+              <Flag className="w-5 h-5 text-red-600" />
+              <span>Red Flag Complaints ({redFlagComplaints.length})</span>
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Complaints that resulted in red flag warnings against you
+            </p>
+          </div>
+          <div className="p-6">
+            <div className="space-y-4">
+              {redFlagComplaints.map((complaint) => (
+                <div key={complaint._id} className="border border-red-200 dark:border-red-800 rounded-lg p-4 bg-red-50 dark:bg-red-900/10">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-3 mb-2">
+                        <Flag className="w-5 h-5 text-red-600" />
+                        <h3 className="font-semibold text-gray-900 dark:text-white">
+                          {complaint.subject}
+                        </h3>
+                        <span className="px-2 py-1 bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300 rounded-full text-xs font-medium">
+                          Red Flag Issued
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                        Complaint #{complaint.complaintNumber || complaint._id.slice(-6)} • 
+                        Submitted: {new Date(complaint.submittedAt).toLocaleDateString()}
+                        {complaint.resolvedAt && (
+                          <span> • Resolved: {new Date(complaint.resolvedAt).toLocaleDateString()}</span>
+                        )}
+                      </p>
+                      <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
+                        {complaint.description.substring(0, 150)}...
+                      </p>
+                      {complaint.resolution && (
+                        <div className="bg-white dark:bg-gray-700 rounded-lg p-3 mt-2">
+                          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Resolution:</p>
+                          <p className="text-sm text-gray-700 dark:text-gray-300">{complaint.resolution}</p>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSelectedComplaint(complaint);
+                        setShowComplaintModal(true);
+                      }}
+                      className="ml-4 p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                      title="View Details"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Pending Applications */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
@@ -274,6 +439,97 @@ const AssistantAccountantDashboard = ({ activeTab }) => {
       </div>
     </div>
   );
+
+  // Modal for complaint details
+  const renderComplaintModal = () => {
+    if (!showComplaintModal || !selectedComplaint) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center space-x-2">
+              <Flag className="w-5 h-5 text-red-600" />
+              <span>Red Flag Complaint Details</span>
+            </h3>
+            <button
+              onClick={() => setShowComplaintModal(false)}
+              className="text-gray-400 hover:text-gray-600 text-2xl"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+              <div className="flex items-center space-x-2 mb-2">
+                <Flag className="w-5 h-5 text-red-600" />
+                <span className="font-medium text-red-900 dark:text-red-100">Red Flag Issued</span>
+              </div>
+              <p className="text-sm text-red-700 dark:text-red-300">
+                This complaint resulted in a red flag warning being issued against you.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">Complaint ID:</span>
+                <p className="font-medium text-gray-900 dark:text-white">
+                  #{selectedComplaint.complaintNumber || selectedComplaint._id.slice(-6)}
+                </p>
+              </div>
+              <div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">Category:</span>
+                <p className="font-medium text-gray-900 dark:text-white capitalize">
+                  {selectedComplaint.category || 'other'}
+                </p>
+              </div>
+              <div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">Submitted:</span>
+                <p className="font-medium text-gray-900 dark:text-white">
+                  {new Date(selectedComplaint.submittedAt).toLocaleDateString()}
+                </p>
+              </div>
+              {selectedComplaint.resolvedAt && (
+                <div>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">Resolved:</span>
+                  <p className="font-medium text-gray-900 dark:text-white">
+                    {new Date(selectedComplaint.resolvedAt).toLocaleDateString()}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <span className="text-sm text-gray-500 dark:text-gray-400">Subject:</span>
+              <p className="font-medium text-gray-900 dark:text-white mt-1">{selectedComplaint.subject}</p>
+            </div>
+
+            <div>
+              <span className="text-sm text-gray-500 dark:text-gray-400">Description:</span>
+              <p className="text-gray-700 dark:text-gray-300 mt-1">{selectedComplaint.description}</p>
+            </div>
+
+            {selectedComplaint.resolution && (
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Resolution:</span>
+                <p className="text-gray-700 dark:text-gray-300 mt-1">{selectedComplaint.resolution}</p>
+              </div>
+            )}
+
+            {selectedComplaint.userId && (
+              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+                <span className="text-sm font-medium text-blue-800 dark:text-blue-200">Complainant:</span>
+                <p className="text-blue-700 dark:text-blue-300 mt-1">
+                  {selectedComplaint.userId.name || selectedComplaint.userId.email || 'N/A'}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // Modal for actions
   const renderModal = () => {
@@ -398,6 +654,7 @@ const AssistantAccountantDashboard = ({ activeTab }) => {
         <>
           {renderDashboard()}
           {renderModal()}
+          {renderComplaintModal()}
         </>
       );
     case 'applications':
@@ -405,6 +662,7 @@ const AssistantAccountantDashboard = ({ activeTab }) => {
         <>
           {renderApplications()}
           {renderModal()}
+          {renderComplaintModal()}
         </>
       );
     case 'reviews':
@@ -412,6 +670,7 @@ const AssistantAccountantDashboard = ({ activeTab }) => {
         <>
           {renderApplications()}
           {renderModal()}
+          {renderComplaintModal()}
         </>
       );
     default:
@@ -419,6 +678,7 @@ const AssistantAccountantDashboard = ({ activeTab }) => {
         <>
           {renderDashboard()}
           {renderModal()}
+          {renderComplaintModal()}
         </>
       );
   }

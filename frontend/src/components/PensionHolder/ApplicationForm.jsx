@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
@@ -13,10 +13,10 @@ import {
   AlertTriangle
 } from 'lucide-react';
 
-const ApplicationForm = () => {
+const ApplicationForm = ({ editingApplication = null, onComplete }) => {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { submitApplication } = useData();
+  const { submitApplication, updateApplication } = useData();
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
     // Personal Information
@@ -47,6 +47,39 @@ const ApplicationForm = () => {
   });
 
   const [errors, setErrors] = useState({});
+
+  // Load existing application data when editing
+  useEffect(() => {
+    if (editingApplication) {
+      // Format dates for input fields (YYYY-MM-DD)
+      const formatDate = (date) => {
+        if (!date) return '';
+        const d = new Date(date);
+        return d.toISOString().split('T')[0];
+      };
+
+      setFormData({
+        fullName: editingApplication.fullName || user.name || '',
+        fatherName: editingApplication.fatherName || '',
+        motherName: editingApplication.motherName || '',
+        dateOfBirth: formatDate(editingApplication.dateOfBirth),
+        nidNumber: editingApplication.nidNumber || '',
+        phoneNumber: editingApplication.phoneNumber || user.phone || '',
+        address: editingApplication.address || user.address || '',
+        lastDesignation: editingApplication.lastDesignation || '',
+        department: editingApplication.department || '',
+        joiningDate: formatDate(editingApplication.joiningDate),
+        retirementDate: formatDate(editingApplication.retirementDate),
+        lastSalary: editingApplication.lastSalary?.toString() || '',
+        jobAge: editingApplication.jobAge?.toString() || '',
+        nidFile: null, // Will keep existing file if not changed
+        jobDocuments: null, // Will keep existing file if not changed
+        bankName: editingApplication.bankName || '',
+        accountNumber: editingApplication.accountNumber || '',
+        branchName: editingApplication.branchName || ''
+      });
+    }
+  }, [editingApplication, user]);
 
   const steps = [
     { id: 1, name: 'Personal Information', icon: User },
@@ -225,8 +258,15 @@ const ApplicationForm = () => {
         pensionAmount: Math.floor(parseFloat(formData.lastSalary) * 0.5), // 50% of last salary
       };
       
-      await submitApplication(applicationData);
-      toast.success(t('application_submitted'));
+      if (editingApplication) {
+        // Update existing application
+        await updateApplication(editingApplication._id, applicationData);
+        toast.success('Application updated and resubmitted successfully!');
+      } else {
+        // Submit new application
+        await submitApplication(applicationData);
+        toast.success(t('application_submitted'));
+      }
       
       // Reset form
       setCurrentStep(1);
@@ -250,8 +290,13 @@ const ApplicationForm = () => {
         accountNumber: '',
         branchName: ''
       });
+
+      // Call onComplete callback if provided (for navigation)
+      if (onComplete) {
+        onComplete();
+      }
     } catch (error) {
-      toast.error('Failed to submit application');
+      toast.error(editingApplication ? 'Failed to update application' : 'Failed to submit application');
     }
   };
 
@@ -872,7 +917,7 @@ const ApplicationForm = () => {
               onClick={handleSubmit}
               className="px-6 py-2 text-sm font-medium text-white bg-bd-green-600 rounded-lg hover:bg-bd-green-700 focus:outline-none focus:ring-2 focus:ring-bd-green-500"
             >
-              {t('submit')}
+              {editingApplication ? 'Update & Resubmit' : t('submit')}
             </button>
           ) : (
             <button

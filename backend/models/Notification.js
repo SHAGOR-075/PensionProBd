@@ -14,6 +14,8 @@ const notificationSchema = new mongoose.Schema({
       'complaint_submitted', 
       'red_flag_issued',
       'account_disabled',
+      'account_activated',
+      'account_deactivated',
       'document_required',
       'payment_processed',
       'system_maintenance'

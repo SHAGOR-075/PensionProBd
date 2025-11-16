@@ -1841,12 +1841,28 @@ app.use('/api/auth', authRoutes);
 app.use('/api/applications', applicationRoutes);
 app.use('/api/complaints', complaintRoutes);
 
-// Get Officers
-app.get('/api/officers', authenticateToken, authorizeRoles('head_office'), async (req, res) => {
+// Get Officers (Available to Head Office and Pension Holders)
+app.get('/api/officers', authenticateToken, async (req, res) => {
   try {
-    const officers = await User.find({
+    // Allow both head_office and pension_holder to fetch officers
+    // Head office needs it for management, pension holders need it for complaint submission
+    if (req.user.userType !== 'head_office' && req.user.userType !== 'pension_holder') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // For pension holders, only show active officers
+    // For head office, show all officers
+    const query = {
       userType: { $in: ['assistant_accountant', 'head_office'] }
-    }).select('-password').sort({ createdAt: -1 });
+    };
+    
+    if (req.user.userType === 'pension_holder') {
+      query.isActive = true; // Only show active officers to pension holders
+    }
+
+    const officers = await User.find(query)
+      .select('-password')
+      .sort({ createdAt: -1 });
 
     res.json(officers);
   } catch (error) {
@@ -1899,6 +1915,54 @@ app.post('/api/officers', authenticateToken, authorizeRoles('head_office'), asyn
   } catch (error) {
     console.error('Add officer error:', error);
     res.status(500).json({ message: 'Server error adding officer' });
+  }
+});
+
+// Toggle Officer Status (Activate/Deactivate)
+app.put('/api/officers/:id/toggle-status', authenticateToken, authorizeRoles('head_office'), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const officer = await User.findById(id);
+    if (!officer) {
+      return res.status(404).json({ message: 'Officer not found' });
+    }
+
+    // Prevent deactivating head office users
+    if (officer.userType === 'head_office' && officer._id.toString() === req.user.userId) {
+      return res.status(400).json({ message: 'Cannot deactivate your own account' });
+    }
+
+    // Toggle status
+    officer.isActive = !officer.isActive;
+    await officer.save();
+
+    // Create notification for officer
+    const Notification = require('./models/Notification');
+    const notification = new Notification({
+      userId: officer._id,
+      type: officer.isActive ? 'account_activated' : 'account_deactivated',
+      title: officer.isActive ? 'Account Activated' : 'Account Deactivated',
+      message: officer.isActive 
+        ? 'Your account has been activated by the head office.' 
+        : 'Your account has been deactivated by the head office. Please contact administration.',
+      priority: officer.isActive ? 'medium' : 'high'
+    });
+    await notification.save();
+
+    res.json({
+      message: officer.isActive ? 'Officer activated successfully' : 'Officer deactivated successfully',
+      officer: {
+        id: officer._id,
+        name: officer.name,
+        email: officer.email,
+        isActive: officer.isActive,
+        redFlags: officer.redFlags
+      }
+    });
+  } catch (error) {
+    console.error('Toggle officer status error:', error);
+    res.status(500).json({ message: 'Server error toggling officer status' });
   }
 });
 
@@ -2031,6 +2095,225 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Dashboard stats error:', error);
     res.status(500).json({ message: 'Server error fetching dashboard stats' });
+  }
+});
+
+// Get Comprehensive Reports (Head Office Only)
+app.get('/api/reports', authenticateToken, authorizeRoles('head_office'), async (req, res) => {
+  try {
+    const { type, startDate, endDate } = req.query;
+    const Application = require('./models/Application');
+    const Complaint = require('./models/Complaint');
+
+    let reports = {};
+
+    // Application Reports
+    if (!type || type === 'applications') {
+      const applicationQuery = {};
+      if (startDate && endDate) {
+        applicationQuery.createdAt = {
+          $gte: new Date(startDate),
+          $lte: new Date(endDate)
+        };
+      }
+
+      const totalApplications = await Application.countDocuments(applicationQuery);
+      const pendingApplications = await Application.countDocuments({ ...applicationQuery, status: 'pending' });
+      const approvedApplications = await Application.countDocuments({ ...applicationQuery, status: 'approved' });
+      const rejectedApplications = await Application.countDocuments({ ...applicationQuery, status: 'rejected' });
+      const forwardedApplications = await Application.countDocuments({ ...applicationQuery, status: 'forwarded' });
+
+      // Applications by month
+      const applicationsByMonth = await Application.aggregate([
+        { $match: applicationQuery },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$createdAt' },
+              month: { $month: '$createdAt' }
+            },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1 } }
+      ]);
+
+      reports.applications = {
+        total: totalApplications,
+        pending: pendingApplications,
+        approved: approvedApplications,
+        rejected: rejectedApplications,
+        forwarded: forwardedApplications,
+        byMonth: applicationsByMonth
+      };
+    }
+
+    // Complaint Reports
+    if (!type || type === 'complaints') {
+      const complaintQuery = {};
+      if (startDate && endDate) {
+        complaintQuery.submittedAt = {
+          $gte: new Date(startDate),
+          $lte: new Date(endDate)
+        };
+      }
+
+      const totalComplaints = await Complaint.countDocuments(complaintQuery);
+      const pendingComplaints = await Complaint.countDocuments({ ...complaintQuery, status: 'pending' });
+      const resolvedComplaints = await Complaint.countDocuments({ ...complaintQuery, status: 'resolved' });
+      const dismissedComplaints = await Complaint.countDocuments({ ...complaintQuery, status: 'dismissed' });
+      const redFlagComplaints = await Complaint.countDocuments({ ...complaintQuery, redFlagIssued: true });
+
+      // Complaints by category
+      const complaintsByCategory = await Complaint.aggregate([
+        { $match: complaintQuery },
+        {
+          $group: {
+            _id: '$category',
+            count: { $sum: 1 }
+          }
+        }
+      ]);
+
+      // Complaints by month
+      const complaintsByMonth = await Complaint.aggregate([
+        { $match: complaintQuery },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$submittedAt' },
+              month: { $month: '$submittedAt' }
+            },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1 } }
+      ]);
+
+      reports.complaints = {
+        total: totalComplaints,
+        pending: pendingComplaints,
+        resolved: resolvedComplaints,
+        dismissed: dismissedComplaints,
+        redFlagIssued: redFlagComplaints,
+        byCategory: complaintsByCategory,
+        byMonth: complaintsByMonth
+      };
+    }
+
+    // Officer Reports
+    if (!type || type === 'officers') {
+      const totalOfficers = await User.countDocuments({
+        userType: { $in: ['assistant_accountant', 'head_office'] }
+      });
+      const activeOfficers = await User.countDocuments({
+        userType: { $in: ['assistant_accountant', 'head_office'] },
+        isActive: true
+      });
+      const disabledOfficers = await User.countDocuments({
+        userType: { $in: ['assistant_accountant', 'head_office'] },
+        isActive: false
+      });
+      const officersWithRedFlags = await User.countDocuments({
+        userType: { $in: ['assistant_accountant', 'head_office'] },
+        redFlags: { $gt: 0 }
+      });
+      const criticalOfficers = await User.countDocuments({
+        userType: { $in: ['assistant_accountant', 'head_office'] },
+        redFlags: { $gte: 2 }
+      });
+
+      // Officers by red flag count
+      const officersByRedFlags = await User.aggregate([
+        {
+          $match: {
+            userType: { $in: ['assistant_accountant', 'head_office'] }
+          }
+        },
+        {
+          $group: {
+            _id: '$redFlags',
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ]);
+
+      // Get top officers with most complaints
+      const topOfficersWithComplaints = await Complaint.aggregate([
+        {
+          $group: {
+            _id: '$officerId',
+            complaintCount: { $sum: 1 },
+            redFlagCount: {
+              $sum: { $cond: ['$redFlagIssued', 1, 0] }
+            }
+          }
+        },
+        { $sort: { complaintCount: -1 } },
+        { $limit: 10 },
+        {
+          $lookup: {
+            from: 'users',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'officer'
+          }
+        },
+        { $unwind: '$officer' },
+        {
+          $project: {
+            officerName: '$officer.name',
+            officerEmail: '$officer.email',
+            officerDesignation: '$officer.designation',
+            officerDepartment: '$officer.department',
+            complaintCount: 1,
+            redFlagCount: 1
+          }
+        }
+      ]);
+
+      reports.officers = {
+        total: totalOfficers,
+        active: activeOfficers,
+        disabled: disabledOfficers,
+        withRedFlags: officersWithRedFlags,
+        critical: criticalOfficers,
+        byRedFlags: officersByRedFlags,
+        topComplaints: topOfficersWithComplaints
+      };
+    }
+
+    // Overall Statistics
+    if (!type || type === 'overall') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      const todayApplications = await Application.countDocuments({
+        createdAt: { $gte: today, $lt: tomorrow }
+      });
+      const todayComplaints = await Complaint.countDocuments({
+        submittedAt: { $gte: today, $lt: tomorrow }
+      });
+
+      reports.overall = {
+        todayApplications,
+        todayComplaints,
+        totalUsers: await User.countDocuments(),
+        totalPensionHolders: await User.countDocuments({ userType: 'pension_holder' })
+      };
+    }
+
+    res.json({
+      message: 'Reports generated successfully',
+      reports,
+      generatedAt: new Date()
+    });
+  } catch (error) {
+    console.error('Generate reports error:', error);
+    res.status(500).json({ message: 'Server error generating reports' });
   }
 });
 

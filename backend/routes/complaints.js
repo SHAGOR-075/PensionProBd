@@ -85,7 +85,11 @@ router.get('/', authenticateToken, async (req, res) => {
     // Filter by user type
     if (req.user.userType === 'pension_holder') {
       query.userId = req.user.userId;
+    } else if (req.user.userType === 'assistant_accountant') {
+      // Assistant accountants can see complaints against them (where they are the officerId)
+      query.officerId = req.user.userId;
     }
+    // Head office can see all complaints (no filter)
 
     const complaints = await Complaint.find(query)
       .populate('userId', 'name email')
@@ -115,6 +119,10 @@ router.get('/:id', authenticateToken, async (req, res) => {
 
     // Check permissions
     if (req.user.userType === 'pension_holder' && complaint.userId._id.toString() !== req.user.userId) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    if (req.user.userType === 'assistant_accountant' && complaint.officerId._id.toString() !== req.user.userId) {
       return res.status(403).json({ message: 'Access denied' });
     }
 

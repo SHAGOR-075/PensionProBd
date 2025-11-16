@@ -342,15 +342,34 @@ const resources = {
   }
 };
 
+// Get saved language preference from localStorage, default to English
+const getSavedLanguage = () => {
+  try {
+    const savedLang = localStorage.getItem('pensionProBD_language');
+    return savedLang || 'en'; // Default to English
+  } catch (error) {
+    return 'en'; // Default to English if localStorage is not available
+  }
+};
+
 i18n
   .use(initReactI18next)
   .init({
     resources,
-    lng: 'bn', // default language (Bengali)
+    lng: getSavedLanguage(), // Default language (English)
     fallbackLng: 'en',
     interpolation: {
       escapeValue: false
     }
   });
+
+// Save language preference to localStorage when it changes
+i18n.on('languageChanged', (lng) => {
+  try {
+    localStorage.setItem('pensionProBD_language', lng);
+  } catch (error) {
+    console.error('Failed to save language preference:', error);
+  }
+});
 
 export default i18n;

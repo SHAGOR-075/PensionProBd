@@ -165,6 +165,50 @@ export const DataProvider = ({ children }) => {
     }
   };
 
+  const updateApplication = async (applicationId, applicationData) => {
+    try {
+      setLoading(true);
+      
+      const formData = new FormData();
+      
+      // Append all form fields
+      Object.keys(applicationData).forEach(key => {
+        if (applicationData[key] !== null && applicationData[key] !== undefined) {
+          // Skip file fields if they are null (means keep existing)
+          if ((key === 'nidFile' || key === 'jobDocuments') && !applicationData[key]) {
+            return;
+          }
+          formData.append(key, applicationData[key]);
+        }
+      });
+
+      const token = localStorage.getItem('pensionProBD_token');
+      const response = await fetch(`${API_BASE_URL}/applications/${applicationId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success(data.message || 'Application updated successfully!');
+        await fetchApplications(); // Refresh applications
+        await fetchDashboardStats(); // Refresh stats
+        return data.application;
+      } else {
+        throw new Error(data.message || 'Application update failed');
+      }
+    } catch (error) {
+      toast.error(error.message || 'Failed to update application');
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const updateApplicationStatus = async (applicationId, status, feedback = '') => {
     try {
       const response = await fetch(`${API_BASE_URL}/applications/${applicationId}/status`, {
@@ -254,6 +298,7 @@ export const DataProvider = ({ children }) => {
       if (response.ok) {
         toast.success(data.message || 'Officer added successfully!');
         await fetchOfficers(); // Refresh officers
+        await fetchDashboardStats(); // Refresh stats
         return data.officer;
       } else {
         throw new Error(data.message || 'Failed to add officer');
@@ -261,6 +306,86 @@ export const DataProvider = ({ children }) => {
     } catch (error) {
       toast.error(error.message || 'Failed to add officer');
       throw error;
+    }
+  };
+
+  const toggleOfficerStatus = async (officerId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/officers/${officerId}/toggle-status`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success(data.message || 'Officer status updated successfully!');
+        await fetchOfficers(); // Refresh officers
+        await fetchDashboardStats(); // Refresh stats
+        return data.officer;
+      } else {
+        throw new Error(data.message || 'Failed to toggle officer status');
+      }
+    } catch (error) {
+      toast.error(error.message || 'Failed to toggle officer status');
+      throw error;
+    }
+  };
+
+  const fetchReports = async (type = '', startDate = '', endDate = '') => {
+    try {
+      setLoading(true);
+      let url = `${API_BASE_URL}/reports`;
+      const params = new URLSearchParams();
+      if (type) params.append('type', type);
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
+      if (params.toString()) url += `?${params.toString()}`;
+
+      const response = await fetch(url, {
+        headers: getAuthHeaders()
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return data.reports;
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to fetch reports');
+      }
+    } catch (error) {
+      console.error('Failed to fetch reports:', error);
+      toast.error(error.message || 'Failed to fetch reports');
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateComplaintStatus = async (complaintId, status, resolution = '') => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_BASE_URL}/complaints/${complaintId}/status`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ status, resolution }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success(data.message || 'Complaint status updated successfully!');
+        await fetchComplaints(); // Refresh complaints
+        await fetchDashboardStats(); // Refresh stats
+        return data.complaint;
+      } else {
+        throw new Error(data.message || 'Failed to update complaint status');
+      }
+    } catch (error) {
+      toast.error(error.message || 'Failed to update complaint status');
+      throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -287,10 +412,14 @@ export const DataProvider = ({ children }) => {
     dashboardStats,
     loading,
     submitApplication,
+    updateApplication,
     updateApplicationStatus,
     submitComplaint,
+    updateComplaintStatus,
     issueRedFlag,
     addOfficer,
+    toggleOfficerStatus,
+    fetchReports,
     markNotificationAsRead,
     fetchApplications,
     fetchComplaints,
