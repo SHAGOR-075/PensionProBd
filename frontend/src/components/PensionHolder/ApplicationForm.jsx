@@ -261,11 +261,11 @@ const ApplicationForm = ({ editingApplication = null, onComplete }) => {
       if (editingApplication) {
         // Update existing application
         await updateApplication(editingApplication._id, applicationData);
-        toast.success('Application updated and resubmitted successfully!');
+        // toast already shown in DataContext.updateApplication
       } else {
         // Submit new application
         await submitApplication(applicationData);
-        toast.success(t('application_submitted'));
+        // toast already shown in DataContext.submitApplication
       }
       
       // Reset form
@@ -296,7 +296,7 @@ const ApplicationForm = ({ editingApplication = null, onComplete }) => {
         onComplete();
       }
     } catch (error) {
-      toast.error(editingApplication ? 'Failed to update application' : 'Failed to submit application');
+      // Error toast already shown in DataContext; nothing extra needed here
     }
   };
 

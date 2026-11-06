@@ -1794,6 +1794,7 @@
 // module.exports = app;
 
 // Third Update
+const dns = require('dns');
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -1803,6 +1804,11 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
+
+// Node.js on Windows (including v26.3.0) can fail Atlas SRV lookups with
+// querySrv ECONNREFUSED even when system DNS works. Point c-ares at public resolvers.
+dns.setServers(['1.1.1.1', '8.8.8.8']);
+dns.setDefaultResultOrder('ipv4first');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -1831,10 +1837,20 @@ if (!fs.existsSync('uploads')) {
 }
 
 // MongoDB connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/pensionprobd', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/pensionprobd';
+console.log('Connecting to MongoDB:', MONGODB_URI.replace(/:([^@]+)@/, ':****@'));
+
+mongoose
+  .connect(MONGODB_URI, {
+    family: 4,
+    serverSelectionTimeoutMS: 10000,
+    socketTimeoutMS: 45000,
+  })
+  .then(() => console.log('MongoDB connected successfully'))
+  .catch((err) => {
+    console.error('MongoDB connection error:', err.message);
+    process.exit(1);
+  });
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -2378,12 +2394,14 @@ const createDefaultAdmins = async () => {
 
 // Error handling middleware
 app.use((error, req, res, next) => {
+  console.error('Global error handler:', error.message);
   if (error instanceof multer.MulterError) {
     if (error.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({ message: 'File too large. Maximum size is 10MB.' });
     }
+    return res.status(400).json({ message: `File upload error: ${error.message}` });
   }
-  res.status(500).json({ message: 'Something went wrong!', error: error.message });
+  res.status(500).json({ message: error.message || 'Something went wrong!' });
 });
 
 const PORT = process.env.PORT || 5000;

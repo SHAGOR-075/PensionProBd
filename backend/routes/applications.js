@@ -67,7 +67,20 @@ router.post('/', authenticateToken, upload.fields([
       });
     }
 
-    const applicationData = req.body;
+    // Extract only allowed fields from body (exclude userId, jobAge, age, pensionAmount sent from frontend)
+    const {
+      fullName, fatherName, motherName, dateOfBirth, nidNumber,
+      phoneNumber, address, lastDesignation, department,
+      joiningDate, retirementDate, lastSalary, bankName,
+      accountNumber, branchName
+    } = req.body;
+
+    const applicationData = {
+      fullName, fatherName, motherName, dateOfBirth, nidNumber,
+      phoneNumber, address, lastDesignation, department,
+      joiningDate, retirementDate, lastSalary, bankName,
+      accountNumber, branchName
+    };
     
     // Add file paths if files were uploaded
     if (req.files) {
@@ -80,28 +93,28 @@ router.post('/', authenticateToken, upload.fields([
     }
 
     // Validate dates
-    const dateOfBirth = new Date(applicationData.dateOfBirth);
-    const joiningDate = new Date(applicationData.joiningDate);
-    const retirementDate = new Date(applicationData.retirementDate);
+    const dateOfBirthObj = new Date(applicationData.dateOfBirth);
+    const joiningDateObj = new Date(applicationData.joiningDate);
+    const retirementDateObj = new Date(applicationData.retirementDate);
     const today = new Date();
 
     // Validate date order: dateOfBirth < joiningDate < retirementDate
-    if (joiningDate <= dateOfBirth) {
+    if (joiningDateObj <= dateOfBirthObj) {
       return res.status(400).json({ 
         message: 'Joining date must be after date of birth' 
       });
     }
 
-    if (retirementDate <= joiningDate) {
+    if (retirementDateObj <= joiningDateObj) {
       return res.status(400).json({ 
         message: 'Retirement date must be after joining date' 
       });
     }
 
     // Calculate job age (accurate calculation considering months and days)
-    let jobAge = retirementDate.getFullYear() - joiningDate.getFullYear();
-    const monthDiff = retirementDate.getMonth() - joiningDate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && retirementDate.getDate() < joiningDate.getDate())) {
+    let jobAge = retirementDateObj.getFullYear() - joiningDateObj.getFullYear();
+    const monthDiff = retirementDateObj.getMonth() - joiningDateObj.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && retirementDateObj.getDate() < joiningDateObj.getDate())) {
       jobAge--;
     }
     
@@ -110,14 +123,25 @@ router.post('/', authenticateToken, upload.fields([
     }
 
     // Calculate age (accurate calculation considering months and days)
-    let age = today.getFullYear() - dateOfBirth.getFullYear();
-    const ageMonthDiff = today.getMonth() - dateOfBirth.getMonth();
-    if (ageMonthDiff < 0 || (ageMonthDiff === 0 && today.getDate() < dateOfBirth.getDate())) {
+    let age = today.getFullYear() - dateOfBirthObj.getFullYear();
+    const ageMonthDiff = today.getMonth() - dateOfBirthObj.getMonth();
+    if (ageMonthDiff < 0 || (ageMonthDiff === 0 && today.getDate() < dateOfBirthObj.getDate())) {
       age--;
     }
 
     // Calculate pension amount (50% of last salary)
     const pensionAmount = Math.floor(parseFloat(applicationData.lastSalary) * 0.5);
+
+    // Check if user already has a pending/approved application
+    const existingApplication = await Application.findOne({
+      userId: req.user.userId,
+      status: { $in: ['pending', 'forwarded', 'approved'] }
+    });
+    if (existingApplication) {
+      return res.status(400).json({ 
+        message: `You already have an application with status: ${existingApplication.status}. You cannot submit another one.` 
+      });
+    }
 
     const application = new Application({
       ...applicationData,
@@ -150,7 +174,14 @@ router.post('/', authenticateToken, upload.fields([
     });
   } catch (error) {
     console.error('Submit application error:', error);
-    res.status(500).json({ message: 'Server error submitting application' });
+    // Handle MongoDB duplicate key error (e.g. duplicate NID)
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern || {})[0] || 'field';
+      return res.status(400).json({ 
+        message: `An application with this ${field === 'nidNumber' ? 'NID number' : field} already exists.` 
+      });
+    }
+    res.status(500).json({ message: 'Server error submitting application', detail: error.message });
   }
 });
 
