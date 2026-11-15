@@ -8,6 +8,11 @@ export default {
   theme: {
     extend: {
       colors: {
+        'gov-green': '#0B5D3B',
+        'gov-green-dark': '#074229',
+        'gov-red': '#C8102E',
+        'gov-paper': '#FAF8F3',
+        'gov-ink': '#1A1A1A',
         // Bangladeshi flag colors
         'bd-green': {
           50: '#f0f9f4',

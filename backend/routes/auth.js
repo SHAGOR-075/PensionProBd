@@ -3,9 +3,16 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
+const Otp = require('../models/Otp');
+const { sendOtpEmail } = require('../utils/emailService');
 const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
+
+// Helper to generate 6-digit OTP
+const generateOtp = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
 
 // Email domain validation
 const validateEmailDomain = (email) => {
@@ -36,6 +43,7 @@ router.post('/register', [
     }
 
     const { name, email, password, phone, address, userType } = req.body;
+    const targetRole = userType || 'pension_holder';
 
     // Validate email domain
     if (!validateEmailDomain(email)) {
@@ -54,14 +62,47 @@ router.post('/register', [
     const saltRounds = parseInt(process.env.BCRYPT_ROUNDS) || 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    // Create new user
+    // If Pension Holder: Require OTP verification sent to Gmail/email
+    if (targetRole === 'pension_holder') {
+      const otp = generateOtp();
+
+      // Clear any prior pending registration OTPs for this email
+      await Otp.deleteMany({ email, purpose: 'register' });
+
+      // Save pending registration data with OTP (expires in 10 minutes)
+      const otpEntry = new Otp({
+        email,
+        otp,
+        purpose: 'register',
+        registrationData: {
+          name,
+          email,
+          password: hashedPassword,
+          phone,
+          address,
+          userType: 'pension_holder'
+        }
+      });
+      await otpEntry.save();
+
+      // Dispatch OTP email
+      await sendOtpEmail(email, otp, 'register', name);
+
+      return res.status(200).json({
+        requireOtp: true,
+        email,
+        message: 'নিবন্ধন সম্পন্ন করতে আপনার ইমেইলে একটি ৬-ডিজিটের ওটিপি ভেরিফিকেশন কোড পাঠানো হয়েছে।'
+      });
+    }
+
+    // Direct registration fallback (if other roles ever register directly)
     const user = new User({
       name,
       email,
       password: hashedPassword,
       phone,
       address,
-      userType: userType || 'pension_holder'
+      userType: targetRole
     });
 
     await user.save();
@@ -92,6 +133,87 @@ router.post('/register', [
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({ message: 'Server error during registration' });
+  }
+});
+
+// Verify Registration OTP
+router.post('/verify-registration-otp', [
+  body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email'),
+  body('otp').trim().isLength({ min: 6, max: 6 }).withMessage('Valid 6-digit OTP is required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        message: 'Validation failed', 
+        errors: errors.array() 
+      });
+    }
+
+    const { email, otp } = req.body;
+
+    // Find the latest valid OTP entry for registration
+    const otpRecord = await Otp.findOne({
+      email: email.toLowerCase().trim(),
+      otp: otp.trim(),
+      purpose: 'register'
+    }).sort({ createdAt: -1 });
+
+    if (!otpRecord || !otpRecord.registrationData) {
+      return res.status(400).json({
+        message: 'ওটিপি কোডটি সঠিক নয় অথবা মেয়াদোত্তীর্ণ হয়ে গেছে। নতুন ওটিপি চেয়ে চেষ্টা করুন।'
+      });
+    }
+
+    // Ensure user was not created in the interim
+    const existingUser = await User.findOne({ email: otpRecord.email });
+    if (existingUser) {
+      await Otp.deleteMany({ email: otpRecord.email, purpose: 'register' });
+      return res.status(400).json({ message: 'এই ইমেইল দিয়ে ইতোমধ্যে একটি অ্যাকাউন্ট রয়েছে।' });
+    }
+
+    // Create verified user
+    const reg = otpRecord.registrationData;
+    const user = new User({
+      name: reg.name,
+      email: reg.email,
+      password: reg.password, // already hashed
+      phone: reg.phone,
+      address: reg.address,
+      userType: reg.userType || 'pension_holder'
+    });
+
+    await user.save();
+
+    // Clean up OTP entries
+    await Otp.deleteMany({ email: otpRecord.email, purpose: 'register' });
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { 
+        userId: user._id, 
+        email: user.email, 
+        userType: user.userType 
+      },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '24h' }
+    );
+
+    res.status(201).json({
+      message: 'ইমেইল ভেরিফিকেশন ও নিবন্ধন সফল হয়েছে!',
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        userType: user.userType,
+        phone: user.phone,
+        address: user.address
+      }
+    });
+  } catch (error) {
+    console.error('Verify registration OTP error:', error);
+    res.status(500).json({ message: 'Server error during OTP verification' });
   }
 });
 
@@ -135,7 +257,32 @@ router.post('/login', [
       return res.status(403).json({ message: 'Access denied for this user type' });
     }
 
-    // Update last login
+    // ONLY FOR PENSION HOLDERS: Send 6-digit OTP to Gmail/email for login
+    if (user.userType === 'pension_holder') {
+      const otp = generateOtp();
+
+      // Clear older login OTPs
+      await Otp.deleteMany({ email: user.email, purpose: 'login' });
+
+      // Save new login OTP (expires in 10 minutes)
+      const otpEntry = new Otp({
+        email: user.email,
+        otp,
+        purpose: 'login'
+      });
+      await otpEntry.save();
+
+      // Dispatch OTP email
+      await sendOtpEmail(user.email, otp, 'login', user.name);
+
+      return res.json({
+        requireOtp: true,
+        email: user.email,
+        message: 'লগইন সম্পন্ন করতে আপনার ইমেইলে একটি ৬-ডিজিটের ওটিপি ভেরিফিকেশন কোড পাঠানো হয়েছে।'
+      });
+    }
+
+    // For other roles (assistant_accountant, head_office): login directly without OTP
     user.lastLogin = new Date();
     await user.save();
 
@@ -167,6 +314,147 @@ router.post('/login', [
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ message: 'Server error during login' });
+  }
+});
+
+// Verify Login OTP (Exclusively for Pension Holders)
+router.post('/verify-login-otp', [
+  body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email'),
+  body('otp').trim().isLength({ min: 6, max: 6 }).withMessage('Valid 6-digit OTP is required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        message: 'Validation failed', 
+        errors: errors.array() 
+      });
+    }
+
+    const { email, otp } = req.body;
+
+    // Find the latest valid OTP entry for login
+    const otpRecord = await Otp.findOne({
+      email: email.toLowerCase().trim(),
+      otp: otp.trim(),
+      purpose: 'login'
+    }).sort({ createdAt: -1 });
+
+    if (!otpRecord) {
+      return res.status(400).json({
+        message: 'ওটিপি কোডটি সঠিক নয় অথবা মেয়াদোত্তীর্ণ হয়ে গেছে। নতুন ওটিপি চেয়ে চেষ্টা করুন।'
+      });
+    }
+
+    // Clean up OTP entries
+    await Otp.deleteMany({ email: otpRecord.email, purpose: 'login' });
+
+    // Find user
+    const user = await User.findOne({ email: otpRecord.email });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Update last login
+    user.lastLogin = new Date();
+    await user.save();
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { 
+        userId: user._id, 
+        email: user.email, 
+        userType: user.userType 
+      },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '24h' }
+    );
+
+    res.json({
+      message: 'লগইন সফল হয়েছে!',
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        userType: user.userType,
+        phone: user.phone,
+        address: user.address,
+        redFlags: user.redFlags,
+        lastLogin: user.lastLogin
+      }
+    });
+  } catch (error) {
+    console.error('Verify login OTP error:', error);
+    res.status(500).json({ message: 'Server error during OTP verification' });
+  }
+});
+
+// Resend OTP (for both Login and Registration)
+router.post('/resend-otp', [
+  body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email'),
+  body('purpose').isIn(['login', 'register']).withMessage('Purpose must be login or register')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        message: 'Validation failed', 
+        errors: errors.array() 
+      });
+    }
+
+    const { email, purpose } = req.body;
+    const cleanEmail = email.toLowerCase().trim();
+    const newOtp = generateOtp();
+
+    if (purpose === 'register') {
+      const existingOtp = await Otp.findOne({
+        email: cleanEmail,
+        purpose: 'register'
+      }).sort({ createdAt: -1 });
+
+      if (!existingOtp || !existingOtp.registrationData) {
+        return res.status(400).json({
+          message: 'কোনো পেন্ডিং নিবন্ধনের তথ্য পাওয়া যায়নি। অনুগ্রহ করে পুনরায় ফর্মটি পূরণ করুন।'
+        });
+      }
+
+      // Update with new OTP and refreshed createdAt
+      existingOtp.otp = newOtp;
+      existingOtp.createdAt = new Date();
+      await existingOtp.save();
+
+      await sendOtpEmail(cleanEmail, newOtp, 'register', existingOtp.registrationData.name);
+
+      return res.json({
+        message: 'আপনার ইমেইলে নতুন ওটিপি কোড পাঠানো হয়েছে।'
+      });
+    } else {
+      // Login OTP resend
+      const user = await User.findOne({ email: cleanEmail });
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      await Otp.deleteMany({ email: cleanEmail, purpose: 'login' });
+
+      const otpEntry = new Otp({
+        email: cleanEmail,
+        otp: newOtp,
+        purpose: 'login'
+      });
+      await otpEntry.save();
+
+      await sendOtpEmail(cleanEmail, newOtp, 'login', user.name);
+
+      return res.json({
+        message: 'আপনার ইমেইলে নতুন ওটিপি কোড পাঠানো হয়েছে।'
+      });
+    }
+  } catch (error) {
+    console.error('Resend OTP error:', error);
+    res.status(500).json({ message: 'Server error resending OTP' });
   }
 });
 

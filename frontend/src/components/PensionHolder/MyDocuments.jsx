@@ -6,31 +6,33 @@ import {
   FileText, 
   Download, 
   Eye, 
-  Upload,
-  Calendar,
-  User,
-  Building,
-  DollarSign,
-  CheckCircle,
-  Clock,
-  AlertTriangle,
-  RefreshCw,
-  Folder,
-  Image,
-  FileIcon
+  Upload, 
+  Calendar, 
+  User, 
+  Building2, 
+  DollarSign, 
+  CheckCircle2, 
+  Clock, 
+  AlertTriangle, 
+  RefreshCw, 
+  FolderOpen, 
+  Image, 
+  FileIcon,
+  ShieldCheck,
+  ExternalLink,
+  Award
 } from 'lucide-react';
 
 const MyDocuments = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const { applications, fetchApplications, loading } = useData();
-  const [selectedDocument, setSelectedDocument] = useState(null);
-  const [showModal, setShowModal] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState('applications');
+
+  const isBengali = i18n.language === 'bn';
 
   const userApplications = applications.filter(app => {
-    // Handle both populated object and string ID cases
     const appUserId = app.userId?._id?.toString() || app.userId?.toString() || app.userId;
     return appUserId === user.id;
   });
@@ -45,395 +47,177 @@ const MyDocuments = () => {
     setRefreshing(false);
   };
 
-  const getFileIcon = (filename) => {
-    if (!filename) return <FileIcon className="w-5 h-5" />;
-    
-    const extension = filename.split('.').pop()?.toLowerCase();
-    switch (extension) {
-      case 'pdf':
-        return <FileText className="w-5 h-5 text-red-600" />;
-      case 'jpg':
-      case 'jpeg':
-      case 'png':
-        return <Image className="w-5 h-5 text-blue-600" />;
-      default:
-        return <FileIcon className="w-5 h-5 text-gray-600" />;
-    }
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'pending':
-        return 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900/20';
-      case 'forwarded':
-        return 'text-blue-600 bg-blue-100 dark:bg-blue-900/20';
-      case 'approved':
-        return 'text-green-600 bg-green-100 dark:bg-green-900/20';
-      case 'rejected':
-        return 'text-red-600 bg-red-100 dark:bg-red-900/20';
-      default:
-        return 'text-gray-600 bg-gray-100 dark:bg-gray-900/20';
-    }
-  };
-
-  const downloadDocument = (filename, applicationNumber) => {
-    // In a real application, this would download the actual file
-    // For demo purposes, we'll create a placeholder download
-    const link = document.createElement('a');
-    link.href = `http://localhost:5000/${filename}`;
-    link.download = `${applicationNumber}-${filename.split('/').pop()}`;
-    link.click();
-  };
-
-  const generateCertificate = (application) => {
-    // Generate pension certificate
-    const certificateData = {
-      applicationNumber: application.applicationNumber,
-      fullName: application.fullName,
-      fatherName: application.fatherName,
-      nidNumber: application.nidNumber,
-      lastDesignation: application.lastDesignation,
-      department: application.department,
-      pensionAmount: application.pensionAmount,
-      approvedDate: application.approvedAt,
-      bankName: application.bankName,
-      accountNumber: application.accountNumber
-    };
-    
-    const dataStr = JSON.stringify(certificateData, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-    
-    const exportFileDefaultName = `pension-certificate-${application.applicationNumber}.json`;
-    
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.click();
-  };
-
-  const renderApplicationDocuments = () => (
-    <div className="space-y-6">
-      {userApplications.length === 0 ? (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-12 text-center">
-          <Folder className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-            No Documents Found
-          </h3>
-          <p className="text-gray-500 dark:text-gray-400 mb-6">
-            You haven't submitted any applications yet.
-          </p>
-          <button className="px-6 py-3 bg-bd-green-600 text-white rounded-lg hover:bg-bd-green-700 transition-colors">
-            Submit Your First Application
-          </button>
-        </div>
-      ) : (
-        userApplications.map((application) => (
-          <div key={application._id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    Application #{application.applicationNumber || application._id.slice(-6)}
-                  </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Submitted on {new Date(application.submittedAt).toLocaleDateString()}
-                  </p>
-                </div>
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(application.status)}`}>
-                  {application.status.charAt(0).toUpperCase() + application.status.slice(1)}
-                </span>
-              </div>
-            </div>
-
-            <div className="p-6">
-              {/* Application Summary */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div className="flex items-center space-x-2">
-                  <User className="w-4 h-4 text-gray-400" />
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                    {application.fullName}
-                  </span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Building className="w-4 h-4 text-gray-400" />
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                    {application.lastDesignation}
-                  </span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Calendar className="w-4 h-4 text-gray-400" />
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                    {application.jobAge} years service
-                  </span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <DollarSign className="w-4 h-4 text-gray-400" />
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                    BDT {application.pensionAmount?.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-
-              {/* Documents */}
-              <div className="space-y-4">
-                <h4 className="font-medium text-gray-900 dark:text-white">Uploaded Documents</h4>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* NID Document */}
-                  {application.nidFile && (
-                    <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          {getFileIcon(application.nidFile)}
-                          <div>
-                            <p className="font-medium text-gray-900 dark:text-white">NID Document</p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                              {application.nidFile.split('/').pop()}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() => {
-                              setSelectedDocument({
-                                name: 'NID Document',
-                                path: application.nidFile,
-                                application: application
-                              });
-                              setShowModal(true);
-                            }}
-                            className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => downloadDocument(application.nidFile, application.applicationNumber)}
-                            className="p-2 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors"
-                          >
-                            <Download className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Job Documents */}
-                  {application.jobDocuments && (
-                    <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          {getFileIcon(application.jobDocuments)}
-                          <div>
-                            <p className="font-medium text-gray-900 dark:text-white">Job Documents</p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                              {application.jobDocuments.split('/').pop()}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() => {
-                              setSelectedDocument({
-                                name: 'Job Documents',
-                                path: application.jobDocuments,
-                                application: application
-                              });
-                              setShowModal(true);
-                            }}
-                            className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => downloadDocument(application.jobDocuments, application.applicationNumber)}
-                            className="p-2 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors"
-                          >
-                            <Download className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Generated Documents */}
-                {application.status === 'approved' && (
-                  <div className="border-t border-gray-200 dark:border-gray-600 pt-4">
-                    <h5 className="font-medium text-gray-900 dark:text-white mb-3">Generated Documents</h5>
-                    <div className="border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <CheckCircle className="w-5 h-5 text-green-600" />
-                          <div>
-                            <p className="font-medium text-green-900 dark:text-green-100">Pension Certificate</p>
-                            <p className="text-xs text-green-700 dark:text-green-300">
-                              Official pension approval certificate
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => generateCertificate(application)}
-                          className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                        >
-                          <Download className="w-4 h-4" />
-                          <span>Download</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        ))
-      )}
-    </div>
-  );
-
-  const renderModal = () => {
-    if (!showModal || !selectedDocument) return null;
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-              {selectedDocument.name}
-            </h3>
-            <button
-              onClick={() => setShowModal(false)}
-              className="text-gray-400 hover:text-gray-600 text-2xl"
-            >
-              ×
-            </button>
-          </div>
-
-          <div className="space-y-4">
-            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-              <div className="flex items-center space-x-3">
-                {getFileIcon(selectedDocument.path)}
-                <div>
-                  <p className="font-medium text-gray-900 dark:text-white">{selectedDocument.name}</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Application #{selectedDocument.application.applicationNumber || selectedDocument.application._id.slice(-6)}
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    File: {selectedDocument.path.split('/').pop()}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="text-center py-8">
-              <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500 dark:text-gray-400 mb-4">
-                Document preview is not available. Click download to view the file.
-              </p>
-              <button
-                onClick={() => downloadDocument(selectedDocument.path, selectedDocument.application.applicationNumber)}
-                className="flex items-center space-x-2 px-6 py-3 bg-bd-green-600 text-white rounded-lg hover:bg-bd-green-700 transition-colors mx-auto"
-              >
-                <Download className="w-4 h-4" />
-                <span>Download Document</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="space-y-6">
+      
       {/* Header */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                My Documents
-              </h2>
-              <p className="text-gray-600 dark:text-gray-400 mt-1">
-                View and download your application documents and certificates
-              </p>
-            </div>
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-              <span>Refresh</span>
-            </button>
-          </div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-gray-200 dark:border-gray-800 gap-3">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white flex items-center space-x-2">
+            <FolderOpen className="w-6 h-6 text-bd-green-600" />
+            <span>{isBengali ? 'ডিজিটাল পেনশন নথিপত্র ভল্ট' : 'Digital Pension Document Locker'}</span>
+          </h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {isBengali 
+              ? 'আপনার দাখিলকৃত প্রমাণক, জাতীয় পরিচয়পত্র এবং অনুমোদিত পেনশন সনদপত্র (PPO)' 
+              : 'Secure repository for your submitted records and official Pension Payment Order (PPO)'}
+          </p>
         </div>
 
-        {/* Summary Stats */}
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
-              <div className="flex items-center space-x-3">
-                <FileText className="w-8 h-8 text-blue-600" />
-                <div>
-                  <p className="text-2xl font-bold text-blue-600">{userApplications.length}</p>
-                  <p className="text-sm text-blue-600">Total Applications</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
-              <div className="flex items-center space-x-3">
-                <CheckCircle className="w-8 h-8 text-green-600" />
-                <div>
-                  <p className="text-2xl font-bold text-green-600">
-                    {userApplications.filter(app => app.status === 'approved').length}
-                  </p>
-                  <p className="text-sm text-green-600">Certificates Available</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4">
-              <div className="flex items-center space-x-3">
-                <Clock className="w-8 h-8 text-yellow-600" />
-                <div>
-                  <p className="text-2xl font-bold text-yellow-600">
-                    {userApplications.filter(app => app.status === 'pending').length}
-                  </p>
-                  <p className="text-sm text-yellow-600">Under Review</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4">
-              <div className="flex items-center space-x-3">
-                <Upload className="w-8 h-8 text-purple-600" />
-                <div>
-                  <p className="text-2xl font-bold text-purple-600">
-                    {userApplications.reduce((total, app) => {
-                      let count = 0;
-                      if (app.nidFile) count++;
-                      if (app.jobDocuments) count++;
-                      return total + count;
-                    }, 0)}
-                  </p>
-                  <p className="text-sm text-purple-600">Uploaded Documents</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing || loading}
+          className="px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-600 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex items-center space-x-1.5 self-start sm:self-auto"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+          <span>{isBengali ? 'হালনাগাদ করুন' : 'Refresh Documents'}</span>
+        </button>
       </div>
 
-      {/* Documents Content */}
-      {loading ? (
-        <div className="text-center py-8">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-bd-green-600 mx-auto"></div>
-          <p className="text-gray-500 dark:text-gray-400 mt-4">Loading documents...</p>
+      {userApplications.length === 0 ? (
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-12 text-center space-y-3">
+          <div className="w-16 h-16 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-bd-green-700 dark:text-bd-green-400 flex items-center justify-center mx-auto">
+            <FolderOpen className="w-8 h-8" />
+          </div>
+          <h3 className="text-base font-bold text-gray-900 dark:text-white">
+            {isBengali ? 'কোনো সংরক্ষিত নথিপত্র পাওয়া যায়নি' : 'No Stored Documents Found'}
+          </h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+            {isBengali 
+              ? 'ফরম ২.১ এর মাধ্যমে আবেদন দাখিল করার পর সংযুক্ত সকল নথিপত্র ও অনুমোদিত পেনশন সনদ এখানে সংরক্ষিত থাকবে।' 
+              : 'Submit Form 2.1 to store your verification records and digital PPO letters here.'}
+          </p>
         </div>
       ) : (
-        renderApplicationDocuments()
+        <div className="space-y-6">
+          {userApplications.map(app => (
+            <div
+              key={app._id}
+              className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm space-y-5"
+            >
+              
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-gray-100 dark:border-gray-700">
+                <div>
+                  <span className="text-xs font-bold text-bd-green-700 dark:text-bd-green-400 font-mono">
+                    #{app.applicationNumber || app._id.slice(-8)}
+                  </span>
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white mt-0.5">
+                    {app.fullName} • {app.lastDesignation} ({app.department})
+                  </h3>
+                </div>
+
+                <div className="text-xs text-gray-500 font-medium">
+                  {isBengali ? 'দাখিলের তারিখ:' : 'Date:'} {new Date(app.submittedAt).toLocaleDateString(isBengali ? 'bn-BD' : 'en-US')}
+                </div>
+              </div>
+
+              {/* Documents Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                
+                {/* NID Card Document */}
+                <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-slate-50 dark:bg-gray-700/30 flex flex-col justify-between space-y-3">
+                  <div className="flex items-start space-x-3">
+                    <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div className="overflow-hidden">
+                      <h4 className="text-xs font-bold text-gray-900 dark:text-white truncate">
+                        {isBengali ? 'জাতীয় পরিচয়পত্র (NID)' : 'National ID Document'}
+                      </h4>
+                      <p className="text-[11px] text-gray-500 font-mono truncate">
+                        {app.nidNumber}
+                      </p>
+                    </div>
+                  </div>
+
+                  {app.nidFile ? (
+                    <a
+                      href={`http://localhost:5000/${app.nidFile.replace(/\\/g, '/')}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full py-2 px-3 rounded-lg bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-xs font-bold text-bd-green-700 dark:text-bd-green-400 hover:bg-bd-green-50 flex items-center justify-center space-x-1 transition-colors"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>{isBengali ? 'নথি দেখুন / ডাউনলোড' : 'View / Download'}</span>
+                    </a>
+                  ) : (
+                    <div className="text-[11px] text-gray-400 italic text-center py-1">
+                      {isBengali ? 'ফাইল সংরক্ষিত নেই' : 'No file on record'}
+                    </div>
+                  )}
+                </div>
+
+                {/* Service Record Document */}
+                <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-slate-50 dark:bg-gray-700/30 flex flex-col justify-between space-y-3">
+                  <div className="flex items-start space-x-3">
+                    <div className="w-10 h-10 rounded-lg bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-400 flex items-center justify-center flex-shrink-0">
+                      <ShieldCheck className="w-5 h-5" />
+                    </div>
+                    <div className="overflow-hidden">
+                      <h4 className="text-xs font-bold text-gray-900 dark:text-white truncate">
+                        {isBengali ? 'সার্ভিস রেকর্ড / প্রত্যায়ন' : 'Service Record Book'}
+                      </h4>
+                      <p className="text-[11px] text-gray-500 truncate">
+                        {app.jobAge} {isBengali ? 'বছরের চাকরিকাল' : 'Years Service'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {app.jobDocuments ? (
+                    <a
+                      href={`http://localhost:5000/${app.jobDocuments.replace(/\\/g, '/')}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full py-2 px-3 rounded-lg bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-xs font-bold text-bd-green-700 dark:text-bd-green-400 hover:bg-bd-green-50 flex items-center justify-center space-x-1 transition-colors"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>{isBengali ? 'নথি দেখুন / ডাউনলোড' : 'View / Download'}</span>
+                    </a>
+                  ) : (
+                    <div className="text-[11px] text-gray-400 italic text-center py-1">
+                      {isBengali ? 'ফাইল সংরক্ষিত নেই' : 'No file on record'}
+                    </div>
+                  )}
+                </div>
+
+                {/* Official Pension Payment Order (PPO) */}
+                <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-emerald-50/60 dark:bg-emerald-950/30 flex flex-col justify-between space-y-3">
+                  <div className="flex items-start space-x-3">
+                    <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-bd-green-700 dark:text-emerald-300 flex items-center justify-center flex-shrink-0">
+                      <Award className="w-5 h-5" />
+                    </div>
+                    <div className="overflow-hidden">
+                      <h4 className="text-xs font-bold text-gray-900 dark:text-white truncate">
+                        {isBengali ? 'পেনশন পেমেন্ট অর্ডার (PPO)' : 'Pension Payment Order'}
+                      </h4>
+                      <p className="text-[11px] text-bd-green-700 dark:text-emerald-400 font-semibold truncate">
+                        {app.status === 'approved' ? (isBengali ? '✅ প্রস্তুত ও অনুমোদিত' : '✅ Approved & Issued') : (isBengali ? '⏳ চূড়ান্ত অনুমোদন অপেক্ষমাণ' : '⏳ Pending Approval')}
+                      </p>
+                    </div>
+                  </div>
+
+                  {app.status === 'approved' ? (
+                    <button
+                      onClick={() => window.print()}
+                      className="w-full py-2 px-3 rounded-lg bg-bd-green-700 hover:bg-bd-green-800 text-white text-xs font-bold flex items-center justify-center space-x-1 transition-colors shadow-sm"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>{isBengali ? 'PPO সনদ প্রিন্ট / ডাউনলোড' : 'Print / Download PPO'}</span>
+                    </button>
+                  ) : (
+                    <div className="text-[11px] text-gray-400 italic text-center py-1">
+                      {isBengali ? 'অনুমোদনের পর সক্রিয় হবে' : 'Active after final sanction'}
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
+            </div>
+          ))}
+        </div>
       )}
 
-      {/* Modal */}
-      {renderModal()}
     </div>
   );
 };

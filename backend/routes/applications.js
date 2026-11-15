@@ -380,7 +380,7 @@ router.put('/:id', authenticateToken, upload.fields([
 // Update Application Status
 router.put('/:id/status', authenticateToken, authorizeRoles('assistant_accountant', 'head_office'), [
   body('status').isIn(['pending', 'forwarded', 'approved', 'rejected']).withMessage('Invalid status'),
-  body('feedback').optional().trim().isLength({ min: 5 }).withMessage('Feedback must be at least 5 characters')
+  body('feedback').optional({ checkFalsy: true }).trim()
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -410,8 +410,8 @@ router.put('/:id/status', authenticateToken, authorizeRoles('assistant_accountan
     }
 
     if (req.user.userType === 'head_office') {
-      if (application.status !== 'forwarded') {
-        return res.status(403).json({ message: 'Can only update forwarded applications' });
+      if (application.status !== 'forwarded' && application.status !== 'pending') {
+        return res.status(403).json({ message: 'Can only update pending or forwarded applications' });
       }
       if (!['approved', 'rejected'].includes(status)) {
         return res.status(403).json({ message: 'Head Office can only approve or reject applications' });
@@ -424,7 +424,7 @@ router.put('/:id/status', authenticateToken, authorizeRoles('assistant_accountan
       status,
       timestamp: new Date(),
       message: feedback || `Application ${status}`,
-      feedback,
+      feedback: feedback || '',
       updatedBy: req.user.userId
     });
 
@@ -437,16 +437,23 @@ router.put('/:id/status', authenticateToken, authorizeRoles('assistant_accountan
 
     await application.save();
 
-    // Create notification for applicant
-    const notification = new Notification({
-      userId: application.userId,
-      type: 'status_updated',
-      title: 'Application Status Updated',
-      message: `Your application #${application.applicationNumber} status has been updated to: ${status}`,
-      applicationId: application._id,
-      priority: status === 'approved' ? 'high' : 'medium'
-    });
-    await notification.save();
+    // Create notification for applicant (non-blocking)
+    try {
+      const applicantUserId = application.userId?._id || application.userId;
+      if (applicantUserId) {
+        const notification = new Notification({
+          userId: applicantUserId,
+          type: 'status_updated',
+          title: 'Application Status Updated',
+          message: `Your application #${application.applicationNumber || application._id} status has been updated to: ${status}`,
+          applicationId: application._id,
+          priority: status === 'approved' ? 'high' : 'medium'
+        });
+        await notification.save();
+      }
+    } catch (notifErr) {
+      console.error('Notification creation non-fatal error:', notifErr.message);
+    }
 
     res.json({
       message: 'Application status updated successfully',
